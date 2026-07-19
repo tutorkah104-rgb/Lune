@@ -1,0 +1,45 @@
+#![allow(clippy::cargo_common_metadata)]
+
+use mlua::prelude::*;
+use lune_utils::TableBuilder;
+
+const TYPEDEFS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/types.d.luau"));
+
+/// Returns a string containing type definitions for the `coroutine` standard library.
+#[must_use]
+pub fn typedefs() -> String {
+    TYPEDEFS.to_string()
+}
+
+/// Creates the `coroutine` standard library module.
+///
+/// This exposes Lua's built-in coroutine library as a Lune standard library,
+/// accessible via `require("@lune/coroutine")`.
+///
+/// # Errors
+///
+/// Errors when out of memory, or if default Lua globals are missing.
+pub fn module(lua: Lua) -> LuaResult<LuaTable> {
+    // Grab each function from the built-in coroutine global
+    let co: LuaTable = lua.globals().get("coroutine")?;
+
+    let create_fn: LuaValue    = co.get("create")?;
+    let resume_fn: LuaValue    = co.get("resume")?;
+    let yield_fn: LuaValue     = co.get("yield")?;
+    let status_fn: LuaValue    = co.get("status")?;
+    let wrap_fn: LuaValue      = co.get("wrap")?;
+    let isyieldable_fn: LuaValue = co.get("isyieldable")?;
+    let running_fn: LuaValue   = co.get("running")?;
+    let close_fn: LuaValue     = co.get("close")?;
+
+    TableBuilder::new(lua)?
+        .with_value("create",      create_fn)?
+        .with_value("resume",      resume_fn)?
+        .with_value("yield",       yield_fn)?
+        .with_value("status",      status_fn)?
+        .with_value("wrap",        wrap_fn)?
+        .with_value("isyieldable", isyieldable_fn)?
+        .with_value("running",     running_fn)?
+        .with_value("close",       close_fn)?
+        .build_readonly()
+}

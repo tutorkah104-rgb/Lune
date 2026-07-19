@@ -1,0 +1,27 @@
+-- Type definitions for @lune/coroutine
+
+export type thread = thread
+
+declare coroutine: {
+    --- Creates a new coroutine from the given function.
+    create: (f: (...any) -> ...any) -> thread,
+    --- Resumes the given coroutine, passing the given arguments.
+    --- Returns true and any yielded/returned values on success,
+    --- or false and an error message on failure.
+    resume: (co: thread, ...any) -> (boolean, ...any),
+    --- Yields the current coroutine, passing values to the resumer.
+    yield: (...any) -> ...any,
+    --- Returns the status of the given coroutine.
+    --- Possible values: "running", "suspended", "normal", "dead"
+    status: (co: thread) -> "running" | "suspended" | "normal" | "dead",
+    --- Creates a wrapped coroutine function that resumes automatically.
+    wrap: (f: (...any) -> ...any) -> (...any) -> ...any,
+    --- Returns whether the current coroutine can yield.
+    isyieldable: () -> boolean,
+    --- Returns the running coroutine and a boolean indicating if it is the main thread.
+    running: () -> (thread?, boolean),
+    --- Closes the given coroutine, marking it as dead.
+    close: (co: thread) -> (boolean, any),
+}
+
+return coroutine

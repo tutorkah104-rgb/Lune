@@ -1,0 +1,490 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 221a0fb..2643c0e 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -5,6 +5,7 @@ members = [
+     "crates/lune",
+     "crates/lune-roblox",
+     "crates/lune-std",
++    "crates/lune-std-coroutine",
+     "crates/lune-std-datetime",
+     "crates/lune-std-fs",
+     "crates/lune-std-luau",
+diff --git a/crates/lune-roblox/src/datatypes/types/axes.rs b/crates/lune-roblox/src/datatypes/types/axes.rs
+index ddf0ac9..c210f96 100644
+--- a/crates/lune-roblox/src/datatypes/types/axes.rs
++++ b/crates/lune-roblox/src/datatypes/types/axes.rs
+@@ -96,11 +96,11 @@ impl LuaUserData for Axes {
+ 
+ impl fmt::Display for Axes {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        let write = make_list_writer();
+-        write(f, self.x, "X")?;
+-        write(f, self.y, "Y")?;
+-        write(f, self.z, "Z")?;
+-        Ok(())
++        let mut parts = Vec::new();
++        if self.x { parts.push("Enum.Axis.X"); }
++        if self.y { parts.push("Enum.Axis.Y"); }
++        if self.z { parts.push("Enum.Axis.Z"); }
++        write!(f, "Axes.new({})", parts.join(", "))
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/cframe.rs b/crates/lune-roblox/src/datatypes/types/cframe.rs
+index b1c011f..bffcddc 100644
+--- a/crates/lune-roblox/src/datatypes/types/cframe.rs
++++ b/crates/lune-roblox/src/datatypes/types/cframe.rs
+@@ -467,13 +467,16 @@ impl fmt::Display for CFrame {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let pos = self.position();
+         let transposed = self.orientation().transpose();
++        let rx = transposed.x_axis;
++        let ry = transposed.y_axis;
++        let rz = transposed.z_axis;
+         write!(
+             f,
+-            "{}, {}, {}, {}",
+-            Vector3(pos),
+-            Vector3(transposed.x_axis),
+-            Vector3(transposed.y_axis),
+-            Vector3(transposed.z_axis)
++            "CFrame.new({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
++            pos.x, pos.y, pos.z,
++            rx.x, rx.y, rx.z,
++            ry.x, ry.y, ry.z,
++            rz.x, rz.y, rz.z
+         )
+     }
+ }
+diff --git a/crates/lune-roblox/src/datatypes/types/color3.rs b/crates/lune-roblox/src/datatypes/types/color3.rs
+index a838b46..996c9a2 100644
+--- a/crates/lune-roblox/src/datatypes/types/color3.rs
++++ b/crates/lune-roblox/src/datatypes/types/color3.rs
+@@ -202,7 +202,7 @@ impl Default for Color3 {
+ 
+ impl fmt::Display for Color3 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}, {}", self.r, self.g, self.b)
++        write!(f, "Color3.new({}, {}, {})", self.r, self.g, self.b)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/color_sequence.rs b/crates/lune-roblox/src/datatypes/types/color_sequence.rs
+index 2c21111..8645304 100644
+--- a/crates/lune-roblox/src/datatypes/types/color_sequence.rs
++++ b/crates/lune-roblox/src/datatypes/types/color_sequence.rs
+@@ -91,14 +91,18 @@ impl LuaUserData for ColorSequence {
+ 
+ impl fmt::Display for ColorSequence {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        for (index, keypoint) in self.keypoints.iter().enumerate() {
+-            if index < self.keypoints.len() - 1 {
+-                write!(f, "{keypoint}, ")?;
+-            } else {
+-                write!(f, "{keypoint}")?;
+-            }
+-        }
+-        Ok(())
++        let keypoints = self
++            .keypoints
++            .iter()
++            .map(|kp| {
++                format!(
++                    "ColorSequenceKeypoint.new({}, Color3.new({}, {}, {}))",
++                    kp.time, kp.color.r, kp.color.g, kp.color.b
++                )
++            })
++            .collect::<Vec<_>>()
++            .join(", ");
++        write!(f, "ColorSequence.new({{ {} }})", keypoints)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/color_sequence_keypoint.rs b/crates/lune-roblox/src/datatypes/types/color_sequence_keypoint.rs
+index 7cb66a6..1a17062 100644
+--- a/crates/lune-roblox/src/datatypes/types/color_sequence_keypoint.rs
++++ b/crates/lune-roblox/src/datatypes/types/color_sequence_keypoint.rs
+@@ -52,7 +52,11 @@ impl LuaUserData for ColorSequenceKeypoint {
+ 
+ impl fmt::Display for ColorSequenceKeypoint {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{} > {}", self.time, self.color)
++        write!(
++            f,
++            "ColorSequenceKeypoint.new({}, Color3.new({}, {}, {}))",
++            self.time, self.color.r, self.color.g, self.color.b
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/faces.rs b/crates/lune-roblox/src/datatypes/types/faces.rs
+index 3b76d4f..2402e29 100644
+--- a/crates/lune-roblox/src/datatypes/types/faces.rs
++++ b/crates/lune-roblox/src/datatypes/types/faces.rs
+@@ -104,14 +104,14 @@ impl LuaUserData for Faces {
+ 
+ impl fmt::Display for Faces {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        let write = make_list_writer();
+-        write(f, self.right, "Right")?;
+-        write(f, self.top, "Top")?;
+-        write(f, self.back, "Back")?;
+-        write(f, self.left, "Left")?;
+-        write(f, self.bottom, "Bottom")?;
+-        write(f, self.front, "Front")?;
+-        Ok(())
++        let mut parts = Vec::new();
++        if self.right  { parts.push("Enum.NormalId.Right"); }
++        if self.top    { parts.push("Enum.NormalId.Top"); }
++        if self.back   { parts.push("Enum.NormalId.Back"); }
++        if self.left   { parts.push("Enum.NormalId.Left"); }
++        if self.bottom { parts.push("Enum.NormalId.Bottom"); }
++        if self.front  { parts.push("Enum.NormalId.Front"); }
++        write!(f, "Faces.new({})", parts.join(", "))
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/font.rs b/crates/lune-roblox/src/datatypes/types/font.rs
+index ea59568..118b9f6 100644
+--- a/crates/lune-roblox/src/datatypes/types/font.rs
++++ b/crates/lune-roblox/src/datatypes/types/font.rs
+@@ -134,7 +134,11 @@ impl LuaUserData for Font {
+ 
+ impl fmt::Display for Font {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}, {}", self.family, self.weight, self.style)
++        write!(
++            f,
++            "Font.new(\"{}\", Enum.FontWeight.{}, Enum.FontStyle.{})",
++            self.family, self.weight, self.style
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/number_range.rs b/crates/lune-roblox/src/datatypes/types/number_range.rs
+index 49e63cd..a7146d7 100644
+--- a/crates/lune-roblox/src/datatypes/types/number_range.rs
++++ b/crates/lune-roblox/src/datatypes/types/number_range.rs
+@@ -54,7 +54,7 @@ impl LuaUserData for NumberRange {
+ 
+ impl fmt::Display for NumberRange {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.min, self.max)
++        write!(f, "NumberRange.new({}, {})", self.min, self.max)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/number_sequence.rs b/crates/lune-roblox/src/datatypes/types/number_sequence.rs
+index e17ea1b..de5f9f3 100644
+--- a/crates/lune-roblox/src/datatypes/types/number_sequence.rs
++++ b/crates/lune-roblox/src/datatypes/types/number_sequence.rs
+@@ -95,14 +95,13 @@ impl LuaUserData for NumberSequence {
+ 
+ impl fmt::Display for NumberSequence {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        for (index, keypoint) in self.keypoints.iter().enumerate() {
+-            if index < self.keypoints.len() - 1 {
+-                write!(f, "{keypoint}, ")?;
+-            } else {
+-                write!(f, "{keypoint}")?;
+-            }
+-        }
+-        Ok(())
++        let keypoints = self
++            .keypoints
++            .iter()
++            .map(|kp| format!("NumberSequenceKeypoint.new({}, {})", kp.time, kp.value))
++            .collect::<Vec<_>>()
++            .join(", ");
++        write!(f, "NumberSequence.new({{ {} }})", keypoints)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/number_sequence_keypoint.rs b/crates/lune-roblox/src/datatypes/types/number_sequence_keypoint.rs
+index b6c234c..4de7b7d 100644
+--- a/crates/lune-roblox/src/datatypes/types/number_sequence_keypoint.rs
++++ b/crates/lune-roblox/src/datatypes/types/number_sequence_keypoint.rs
+@@ -55,7 +55,11 @@ impl LuaUserData for NumberSequenceKeypoint {
+ 
+ impl fmt::Display for NumberSequenceKeypoint {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{} > {}", self.time, self.value)
++        write!(
++            f,
++            "NumberSequenceKeypoint.new({}, {})",
++            self.time, self.value
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/physical_properties.rs b/crates/lune-roblox/src/datatypes/types/physical_properties.rs
+index ffc33b8..120e8c8 100644
+--- a/crates/lune-roblox/src/datatypes/types/physical_properties.rs
++++ b/crates/lune-roblox/src/datatypes/types/physical_properties.rs
+@@ -114,7 +114,7 @@ impl fmt::Display for PhysicalProperties {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         write!(
+             f,
+-            "{}, {}, {}, {}, {}",
++            "PhysicalProperties.new({}, {}, {}, {}, {})",
+             self.density,
+             self.friction,
+             self.elasticity,
+diff --git a/crates/lune-roblox/src/datatypes/types/ray.rs b/crates/lune-roblox/src/datatypes/types/ray.rs
+index 89ea9c2..0831258 100644
+--- a/crates/lune-roblox/src/datatypes/types/ray.rs
++++ b/crates/lune-roblox/src/datatypes/types/ray.rs
+@@ -79,7 +79,14 @@ impl LuaUserData for Ray {
+ 
+ impl fmt::Display for Ray {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", Vector3(self.origin), Vector3(self.direction))
++        let o = self.origin;
++        let d = self.direction;
++        write!(
++            f,
++            "Ray.new(Vector3.new({}, {}, {}), Vector3.new({}, {}, {}))",
++            o.x, o.y, o.z,
++            d.x, d.y, d.z
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/rect.rs b/crates/lune-roblox/src/datatypes/types/rect.rs
+index 89fcb20..dd43cb2 100644
+--- a/crates/lune-roblox/src/datatypes/types/rect.rs
++++ b/crates/lune-roblox/src/datatypes/types/rect.rs
+@@ -85,7 +85,12 @@ impl LuaUserData for Rect {
+ 
+ impl fmt::Display for Rect {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.min, self.max)
++        write!(
++            f,
++            "Rect.new(Vector2.new({}, {}), Vector2.new({}, {}))",
++            self.min.x, self.min.y,
++            self.max.x, self.max.y
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/region3.rs b/crates/lune-roblox/src/datatypes/types/region3.rs
+index 068b8d2..aaec491 100644
+--- a/crates/lune-roblox/src/datatypes/types/region3.rs
++++ b/crates/lune-roblox/src/datatypes/types/region3.rs
+@@ -64,7 +64,14 @@ impl LuaUserData for Region3 {
+ 
+ impl fmt::Display for Region3 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", Vector3(self.min), Vector3(self.max))
++        let mn = self.min;
++        let mx = self.max;
++        write!(
++            f,
++            "Region3.new(Vector3.new({}, {}, {}), Vector3.new({}, {}, {}))",
++            mn.x, mn.y, mn.z,
++            mx.x, mx.y, mx.z
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/region3int16.rs b/crates/lune-roblox/src/datatypes/types/region3int16.rs
+index ff2bc15..dd7a0d0 100644
+--- a/crates/lune-roblox/src/datatypes/types/region3int16.rs
++++ b/crates/lune-roblox/src/datatypes/types/region3int16.rs
+@@ -54,7 +54,14 @@ impl LuaUserData for Region3int16 {
+ 
+ impl fmt::Display for Region3int16 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", Vector3int16(self.min), Vector3int16(self.max))
++        let mn = self.min;
++        let mx = self.max;
++        write!(
++            f,
++            "Region3int16.new(Vector3int16.new({}, {}, {}), Vector3int16.new({}, {}, {}))",
++            mn.x, mn.y, mn.z,
++            mx.x, mx.y, mx.z
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/udim.rs b/crates/lune-roblox/src/datatypes/types/udim.rs
+index 5b75442..9355137 100644
+--- a/crates/lune-roblox/src/datatypes/types/udim.rs
++++ b/crates/lune-roblox/src/datatypes/types/udim.rs
+@@ -70,7 +70,7 @@ impl Default for UDim {
+ 
+ impl fmt::Display for UDim {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.scale, self.offset)
++        write!(f, "UDim.new({}, {})", self.scale, self.offset)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/udim2.rs b/crates/lune-roblox/src/datatypes/types/udim2.rs
+index 0b4fe18..4f5de73 100644
+--- a/crates/lune-roblox/src/datatypes/types/udim2.rs
++++ b/crates/lune-roblox/src/datatypes/types/udim2.rs
+@@ -116,7 +116,12 @@ impl LuaUserData for UDim2 {
+ 
+ impl fmt::Display for UDim2 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.x, self.y)
++        write!(
++            f,
++            "UDim2.new({}, {}, {}, {})",
++            self.x.scale, self.x.offset,
++            self.y.scale, self.y.offset
++        )
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/vector2.rs b/crates/lune-roblox/src/datatypes/types/vector2.rs
+index 836b1cb..349e1a5 100644
+--- a/crates/lune-roblox/src/datatypes/types/vector2.rs
++++ b/crates/lune-roblox/src/datatypes/types/vector2.rs
+@@ -123,7 +123,7 @@ impl LuaUserData for Vector2 {
+ 
+ impl fmt::Display for Vector2 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.0.x, self.0.y)
++        write!(f, "Vector2.new({}, {})", self.0.x, self.0.y)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/vector2int16.rs b/crates/lune-roblox/src/datatypes/types/vector2int16.rs
+index 162ab61..7af526a 100644
+--- a/crates/lune-roblox/src/datatypes/types/vector2int16.rs
++++ b/crates/lune-roblox/src/datatypes/types/vector2int16.rs
+@@ -57,7 +57,7 @@ impl LuaUserData for Vector2int16 {
+ 
+ impl fmt::Display for Vector2int16 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}", self.0.x, self.0.y)
++        write!(f, "Vector2int16.new({}, {})", self.0.x, self.0.y)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/vector3.rs b/crates/lune-roblox/src/datatypes/types/vector3.rs
+index 51a8ab1..7eaab14 100644
+--- a/crates/lune-roblox/src/datatypes/types/vector3.rs
++++ b/crates/lune-roblox/src/datatypes/types/vector3.rs
+@@ -173,7 +173,7 @@ impl LuaUserData for Vector3 {
+ 
+ impl fmt::Display for Vector3 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}, {}", self.0.x, self.0.y, self.0.z)
++        write!(f, "Vector3.new({}, {}, {})", self.0.x, self.0.y, self.0.z)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/datatypes/types/vector3int16.rs b/crates/lune-roblox/src/datatypes/types/vector3int16.rs
+index 717aafa..38578e7 100644
+--- a/crates/lune-roblox/src/datatypes/types/vector3int16.rs
++++ b/crates/lune-roblox/src/datatypes/types/vector3int16.rs
+@@ -59,7 +59,7 @@ impl LuaUserData for Vector3int16 {
+ 
+ impl fmt::Display for Vector3int16 {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{}, {}, {}", self.0.x, self.0.y, self.0.z)
++        write!(f, "Vector3int16.new({}, {}, {})", self.0.x, self.0.y, self.0.z)
+     }
+ }
+ 
+diff --git a/crates/lune-roblox/src/instance/base.rs b/crates/lune-roblox/src/instance/base.rs
+index bc7dac0..8c69ff3 100644
+--- a/crates/lune-roblox/src/instance/base.rs
++++ b/crates/lune-roblox/src/instance/base.rs
+@@ -24,9 +24,9 @@ use super::{
+ 
+ #[allow(clippy::too_many_lines)]
+ pub fn add_methods<M: LuaUserDataMethods<Instance>>(m: &mut M) {
+-    m.add_meta_method(LuaMetaMethod::ToString, |lua, this, ()| {
++    m.add_meta_method(LuaMetaMethod::ToString, |_lua, this, ()| {
+         ensure_not_destroyed(this)?;
+-        userdata_impl_to_string(lua, this, ())
++        Ok(format!("Instance.new(\"{}\")", this.get_class_name()))
+     });
+     m.add_meta_method(LuaMetaMethod::Eq, userdata_impl_eq);
+     // NOTE: Index / NewIndex are registered as meta *functions* (not methods)
+diff --git a/crates/lune-std/Cargo.toml b/crates/lune-std/Cargo.toml
+index 63ca2a7..40c87c5 100644
+--- a/crates/lune-std/Cargo.toml
++++ b/crates/lune-std/Cargo.toml
+@@ -14,6 +14,7 @@ workspace = true
+ 
+ [features]
+ default = [
++    "coroutine",
+     "datetime",
+     "fs",
+     "luau",
+@@ -26,6 +27,7 @@ default = [
+     "task",
+ ]
+ 
++coroutine = ["dep:lune-std-coroutine"]
+ datetime = ["dep:lune-std-datetime"]
+ fs = ["dep:lune-std-fs"]
+ luau = ["dep:lune-std-luau"]
+@@ -50,6 +52,7 @@ serde_json = "1.0"
+ 
+ lune-utils = { version = "0.3.5", path = "../lune-utils" }
+ 
++lune-std-coroutine = { optional = true, version = "0.3.5", path = "../lune-std-coroutine" }
+ lune-std-datetime = { optional = true, version = "0.3.5", path = "../lune-std-datetime" }
+ lune-std-fs = { optional = true, version = "0.3.5", path = "../lune-std-fs" }
+ lune-std-luau = { optional = true, version = "0.3.5", path = "../lune-std-luau" }
+diff --git a/crates/lune-std/src/library.rs b/crates/lune-std/src/library.rs
+index ae37da7..92d77ba 100644
+--- a/crates/lune-std/src/library.rs
++++ b/crates/lune-std/src/library.rs
+@@ -8,6 +8,7 @@ use mlua::prelude::*;
+ #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+ #[rustfmt::skip]
+ pub enum LuneStandardLibrary {
++    #[cfg(feature = "coroutine")] Coroutine,
+     #[cfg(feature = "datetime")] DateTime,
+     #[cfg(feature = "fs")]       Fs,
+     #[cfg(feature = "luau")]     Luau,
+@@ -26,6 +27,7 @@ impl LuneStandardLibrary {
+     */
+     #[rustfmt::skip]
+     pub const ALL: &'static [Self] = &[
++        #[cfg(feature = "coroutine")] Self::Coroutine,
+         #[cfg(feature = "datetime")] Self::DateTime,
+         #[cfg(feature = "fs")]       Self::Fs,
+         #[cfg(feature = "luau")]     Self::Luau,
+@@ -46,6 +48,7 @@ impl LuneStandardLibrary {
+     #[allow(unreachable_patterns)]
+     pub fn name(&self) -> &'static str {
+         match self {
++            #[cfg(feature = "coroutine")] Self::Coroutine => "coroutine",
+             #[cfg(feature = "datetime")] Self::DateTime => "datetime",
+             #[cfg(feature = "fs")]       Self::Fs       => "fs",
+             #[cfg(feature = "luau")]     Self::Luau     => "luau",
+@@ -69,6 +72,7 @@ impl LuneStandardLibrary {
+     #[allow(unreachable_patterns)]
+     pub fn typedefs(&self) -> String {
+     	match self {
++            #[cfg(feature = "coroutine")] Self::Coroutine => lune_std_coroutine::typedefs(),
+             #[cfg(feature = "datetime")] Self::DateTime => lune_std_datetime::typedefs(),
+             #[cfg(feature = "fs")]       Self::Fs       => lune_std_fs::typedefs(),
+             #[cfg(feature = "luau")]     Self::Luau     => lune_std_luau::typedefs(),
+@@ -96,6 +100,7 @@ impl LuneStandardLibrary {
+     pub fn module(&self, lua: Lua) -> LuaResult<LuaTable> {
+         let mod_lua = lua.clone();
+         let res: LuaResult<LuaTable> = match self {
++            #[cfg(feature = "coroutine")] Self::Coroutine => lune_std_coroutine::module(mod_lua),
+             #[cfg(feature = "datetime")] Self::DateTime => lune_std_datetime::module(mod_lua),
+             #[cfg(feature = "fs")]       Self::Fs       => lune_std_fs::module(mod_lua),
+             #[cfg(feature = "luau")]     Self::Luau     => lune_std_luau::module(mod_lua),
+@@ -125,6 +130,7 @@ impl FromStr for LuneStandardLibrary {
+     fn from_str(s: &str) -> Result<Self, Self::Err> {
+         let low = s.trim().to_ascii_lowercase();
+         Ok(match low.as_str() {
++            #[cfg(feature = "coroutine")] "coroutine" => Self::Coroutine,
+             #[cfg(feature = "datetime")] "datetime" => Self::DateTime,
+             #[cfg(feature = "fs")]       "fs"       => Self::Fs,
+             #[cfg(feature = "luau")]     "luau"     => Self::Luau,
